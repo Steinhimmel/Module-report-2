@@ -1,0 +1,360 @@
+---
+title: "Module2 report"
+author: '480139690'
+output: 
+  html_document:
+    theme: simplex
+    self_contained: yes
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+#install.packages('ggpubr')
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+
+# Executive Summary
+***
+
+# Data Story
+***
+
+##Who collected the data
+
+
+##How is data reported
+
+
+##Limitation
+
+
+# Full Report
+***
+
+```{r ,include=TRUE, message=FALSE, warning=FALSE}
+library("bomrang")
+library("dplyr")
+library("ggplot2")
+library("leaflet")
+library("plotly")
+library("gridExtra")
+library("tidyverse")
+library("RColorBrewer")
+library("scales")
+library("qqplotr")
+library("janitor")
+library("knitr")#
+library("remote")
+library("readr")
+library("data.table")
+library("ggpubr")
+library("kableExtra")#
+```
+
+# Data
+```{r  include=TRUE, message=FALSE, warning=FALSE}
+survey = readr::read_csv("class_survey.csv",na = c("NA",""," ","n/a"))%>%
+  janitor::clean_names()
+
+old_names = colnames(survey)
+
+survey = survey %>% 
+  janitor::clean_names() %>% 
+  rename(postcode = postcode_of_where_you_live_during_semester,
+         units = what_statistics_courses_have_you_taken,
+         clubs = how_many_university_clubs_are_you_a_member_of,
+         dentist = how_long_has_it_been_since_you_last_went_to_the_dentist,
+         study = on_average_how_many_hours_per_week_did_you_spend_on_university_work_last_semester,
+         social_media = what_is_your_favourite_social_media_platform,
+         siblings = how_many_siblings_do_you_have,
+         exercise = how_many_hours_a_week_do_you_spend_exercising,
+         pet_growing_up = did_you_have_a_pet_growing_up ,
+         live_with_parents = do_you_currently_live_with_your_parents,
+         eye_colour = what_is_your_eye_colour,
+         hrs_employed = how_many_hours_per_week_do_you_work_in_paid_employment,
+         fav_season = what_is_your_favourite_season_of_the_year,
+         shoe_size = what_is_your_shoe_size,
+         height = how_tall_are_you,
+         floss_frequency = how_often_do_you_floss_your_teeth,
+         glasses = do_you_wear_glasses_or_contacts,
+         handedness = what_is_your_dominant_hand,
+         doneness = how_do_you_like_your_steak_cooked)
+new_names = colnames(survey)
+```
+
+#### Clean Gender data
+```{r include=TRUE, message=FALSE, warning=FALSE}
+#clean gender
+survey = survey %>% mutate(gender = stringr::str_to_title(gender), 
+    gender = case_when(gender == "F" ~ "Female",gender == "female" ~ "Female", gender == "male" ~ "Male",
+    gender == "Man" ~ "Male",gender == "M" ~ "Male", gender == "m" ~ "Male", 
+    gender == "#" ~ "Non-Binary", gender == "Yes" ~ "Non-Binary",TRUE ~ gender))
+survey %>% tabyl(gender) %>% adorn_pct_formatting() %>% kable(caption = "Gender") %>% kable_styling(position = "center",bootstrap_options = c("hover", "condensed"))
+```
+
+#### Clean Social media data
+```{r include=TRUE, message=FALSE, warning=FALSE}
+#clean social_media
+survey %>% 
+  mutate(
+    social_media = stringr::str_to_title(social_media),
+    social_media = recode(social_media,
+                          `Facebook Messenger` = "Facebook",
+                          Fb = "Facebook",
+                          `I Never Use Social Media.` = "None",
+                          Ig = "Instagram"),
+    social_media = forcats::fct_lump(social_media, n=7)
+  ) %>% 
+  tabyl(social_media) %>% adorn_pct_formatting() %>% kable(caption = "Social Media") %>% kable_styling(position = "center",bootstrap_options = c("hover", "condensed"))
+```
+
+
+#### Clean Excercise Data 
+```{r}
+survey = survey %>% 
+  mutate(
+    exercise = as.numeric(exercise),
+    exercise = case_when(
+      exercise > 24*7 ~ NA_real_,
+      TRUE ~ exercise
+    )
+  )
+survey %>% tabyl(exercise) %>% kable()
+```
+
+#### Save and load the cleaned data
+```{r results='hide',include=TRUE, message=FALSE, warning=FALSE}
+readr::write_csv(survey, "survey_cleaned.csv")
+data = readr::read_csv("survey_cleaned.csv",na = c("NA",""," ","n/a"))%>%
+  janitor::clean_names()
+glimpse(data)
+```
+
+# Limitation about this data
+
+***
+
+#### Random sample? Having Bias?
+There are 325 students enrolled in DATA2002/2902 in the second semester 2018. The respond rate is not that high, hence the margin of error can be quite high. In this case, we tend to think the sample is not randomly chosen from the whole population.
+
+The data was collected through on-line survey on ed platform,it is likely to cause Non-response bias to sample result. Students who answered the survey are possibly those took DATA2002/2902 more seriously, joining campus life more activily and  spend more time on study platform(ed). That might affect result to survey questions like: number of being member of school clubs, study time per week, time on social media platform and so on. Considering that, this sample can not be viewed as random or representative for the whole population. 
+
+Except collection bias, some survey questions are likely to cause measurement bias. For example: when people answering to the question: "how often do you floss your teeth(floss_frequency)" and "average hour spend on school work last semester(study)", they may fail to answer accurately and truthfully. This can result in inaccurate conclusion. Other vaiables like "the last time to see dentist(dentist)" and "favourite social media(social_media)" might also subjected to measurement bias. 
+
+#### Missing Value
+```{r include=TRUE, message=FALSE, warning=FALSE}
+datf = as.data.frame(data)
+datf %>%
+gather(col_name,value)%>%
+group_by(col_name)%>%
+tally(is.na(value)) %>%
+  kable()%>%
+  kable_styling(position = "center",bootstrap_options = c("hover", "condensed"))
+```
+- There is a large number of missing values in â€œidentifierâ€? column probably because this question is too vague. Students don't know whether they should answer this question with their SID or something else. 
+- Other columns have a small proportion of missing value so it is safe to remove the data with missing values.
+
+## Is amout of exercise indpendent of cusumption of red meat?
+```{r}
+options(digits = 2)
+data$exercise = as.numeric(data$exercise)
+data1 = data %>% filter(!(exercise >168)) %>% 
+  tabyl(exercise, doneness) %>% as.data.frame()
+data1$eat_red = rowSums(cbind(
+  data1$Medium,data1$`Medium-rare`,data1$`Medium-well done`,
+  data1$Rare, data1$`Well done`
+))
+data2 = cbind(data1$exercise, data1$`I don't eat red meat`,
+              data1$eat_red)
+vec_no_red = rep(data2[,1],data2[,2])
+vec_red = rep(data2[,1],data2[,3])
+dat = data.frame(
+  platelets = c(vec_no_red,vec_red),
+  status = c(rep("Don't eat red meat",
+                 length(vec_no_red)),
+             rep("Eat red meat",
+                 length(vec_red)))
+)
+dat %>% ggplot(aes(x = status, y = platelets))+ 
+  geom_boxplot()+
+  geom_dotplot(
+    stackdir = "center",
+    binaxis = "y",
+    binwidth = 0.5
+  )+theme_get()+
+  labs(
+    x = "red meat",
+    y = "exersice time"
+  )
+###looks quite symmetric
+
+y_m = c(shapiro.test(vec_no_red)$p.value,shapiro.test(vec_red)$p.value)
+x_m = c("no_red", "red")
+y_m.mat = matrix(y_m,1,2)
+colnames(y_m.mat) = x_m
+rownames(y_m.mat) = "p-value"
+y_m.mat
+##apply shapiro.test
+
+ggqqplot(vec_no_red)
+ggqqplot(vec_red)
+## apply QQ-plot
+
+sum = dat %>% group_by(status) %>%
+  summarise(Mean = mean(platelets),
+            SD = sd(platelets),
+            n = n())
+knitr::kable(sum, format = "html", digits = 1)
+#t.test(vec_no_red,vec_red,alternative = "two.sided")
+wilcox.test(vec_no_red, vec_red, alternative = 'two.sided', correct= FALSE)
+#here we apply welch wilcox rank sum test. I don't choose welch two-sample t-test bc the distibution of red meat sample doesn't follow normal distribution. Besides, the sample size between don't eat red meat and eat red meat has a huge discrepancy. 
+```
+
+#question 5 is excercise time affected by number of clubs students join in?
+```{r}
+data3 = data %>% filter(!(exercise >168)&(clubs>0)&(clubs<50)) %>% tabyl(exercise, clubs) %>% as.data.frame()
+data3
+Les_eq_3 = rowSums(data3[,2:4])
+More_3 = rowSums(data3[,5:8])
+vec_less = rep(data3[,1],Les_eq_3)
+vec_more = rep(data3[,1],More_3)
+data4 = cbind(data3[,1],vec_less,vec_more)
+dat2 = data.frame(
+  platelets = c(vec_less,vec_more),
+  status = c(rep("Less or equal 3",
+                 length(vec_less)),
+             rep("more than 3",
+                 length(vec_more)))
+)
+dat2 %>% ggplot(aes(x = status, y = platelets))+ 
+  geom_boxplot()+
+  geom_dotplot(
+    stackdir = "center",
+    binaxis = "y",
+    binwidth = 0.5
+  )+theme_get()+
+  labs(
+    x = "clubs",
+    y = "exersice time"
+  )
+###boxplot of more than 3 not very symetric, use shapirotest to check normality
+
+y_c = c(shapiro.test(vec_less)$p.value,shapiro.test(vec_more)$p.value)
+x_c = c("Less_3", "more_3")
+y_c.mat = matrix(y_c,1,2)
+colnames(y_c.mat) = x_c
+rownames(y_c.mat) = "p-value"
+y_c.mat
+##apply shapiro.test
+
+ggqqplot(vec_less)
+ggqqplot(vec_more)
+## apply QQ-plot
+
+###The distribution of Less than or equal to 3 group doen't meet noramlity. we can not apply two sample t-test
+
+sum2 = dat2 %>% group_by(status) %>%
+  summarise(Mean = mean(platelets),
+            SD = sd(platelets),
+            n = n())
+
+knitr::kable(sum2, format = "html", digits = 1)
+t.test(vec_less,vec_more,alternative = "two.sided")
+wilcox.test(vec_less, vec_more, alternative = 'two.sided', correct= FALSE)
+#here we apply welch wilcox rank sum test. I don't choose welch two-sample t-test bc the distibution of less than or equal to 3 sample doesn't follow normal distribution. Besides, the sample size between don't eat less than or equal to 3 and more than 3 has a huge discrepancy. 
+```
+
+#Question 6
+```{r}
+data5 = data  %>% filter(!(study>80)&!(study<0))%>% tabyl(study,live_with_parents) %>% as.data.frame()
+data5
+#I find a student who spend nearly whole time on study, which is inpossible. I view this data as fault data and delete that row.
+data5 = data5  %>% filter(!(study == 167))
+data5
+vec_without = rep(data5[,1],data5[,2])
+vec_with = rep(data5[,1],data5[,3])
+#data6 = cbind(data5[,1],vec_without,vec_with)
+dat3 = data.frame(
+  platelets = c(vec_without, vec_with),
+  status = c(rep("Live without parents",
+                 length(vec_without)),
+             rep("Live with parents",
+                 length(vec_with)))
+)
+dat3 %>% ggplot(aes(x = status, y = platelets))+ 
+  geom_boxplot()+
+  geom_dotplot(
+    stackdir = "center",
+    binaxis = "y",
+    binwidth = 3
+  )+theme_get()+
+  labs(
+    x = "Whether live with parents",
+    y = "study time"
+  )
+###boxplots both looks not very symetric
+
+y_p = c(shapiro.test(vec_without)$p.value,shapiro.test(vec_with)$p.value)
+x_p = c("Without", "With")
+y_p.mat = matrix(y_p,1,2)
+colnames(y_p.mat) = x_p
+rownames(y_p.mat) = "p-value"
+y_p.mat
+##apply shapiro.test
+
+ggqqplot(vec_without)
+ggqqplot(vec_with)
+## apply QQ-plot
+
+###The distribution of live without parents group doesn't meet noramlity. we can not apply two sample t-test
+
+sum3 = dat3 %>% group_by(status) %>%
+  summarise(Mean = mean(platelets),
+            SD = sd(platelets),
+            n = n())
+
+knitr::kable(sum3, format = "html", digits = 1)
+#t.test(vec_less,vec_more,alternative = "two.sided")
+wilcox.test(vec_without, vec_with, alternative = 'two.sided', correct= FALSE)#change to onesided
+#here we apply welch wilcox rank sum test. I don't choose welch two-sample t-test bc the distibution of less than or equal to 3 sample doesn't follow normal distribution. Besides, the sample size between don't eat less than or equal to 3 and more than 3 has a huge discrepancy. 
+
+###sum the wrong things
+```
+
+
+#question7, Does having or not having siblins effect much on study, social activity(clubs), exercise, work(balance life and work)?
+```{r}
+summary(data$siblings)
+summary(data$study)
+summary(data$clubs)
+summary(data$hrs_employed)
+##delete wrong values
+data7 = data %>% 
+  filter(siblings >= 0& !(exercise >168) & !(study >168)& !(clubs > 30) & !(hrs_employed > 168)) %>%
+  dplyr::select(siblings,study,clubs,exercise,hrs_employed) %>% 
+  mutate(one_child = (siblings == 0)) %>% group_by(one_child) %>% 
+  dplyr::select(-siblings) %>% as.data.frame()
+data7
+dat_one_c = data7 %>% filter(one_child == TRUE) %>% dplyr::select(-one_child)
+dat_s = data7 %>% filter(one_child == FALSE) %>% dplyr::select(-one_child)
+ov = apply(dat_one_c,2,mean)
+ov
+sv = apply(dat_s,2,mean)
+sv
+ICSNP::HotellingsT2(dat_one_c, dat_s, test = "f")
+### Whether having siblings is  not a big factor that impacts students life,study and work 
+```
+
+
+
+
+
+
+
+
+
+

@@ -1,32 +1,731 @@
 ---
 title: "Module Report 2"
-author: "Renfei Huang 490249332"
+author: "490249332"
 date: "11 September 2019"
-output: html_document
+output:
+    html_document:
+        theme: simplex
+        toc: true
+        toc_float: true
+        code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+***
+# Introduction and Data Cleaning
+***
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Descriptions of Data
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-shello
+> Randomness and Representativity of Data
+
+To decide if the data sample is random or not, we need to look at the source of this data, seeking demonstarations about how it is collected,  how the sample data is selected and what population it is targetted. By investigating the survey design, sampling procedure, objects, tool, we can then assess its quality and representity, identify plausible errors and start our analysis and statistical inference. In the paper 'A Methodology for Assessing Sample Representativeness', the authors mantioned that randomness and the target population should be important to see if the data is reliable, as statistical inference can only be made to available population rather than the whole population(Ramsey and Hewitt, 2005). If randomness is not applied, no statistical inference can be made.
+
+In our case, the survey is designed for students enrolled in DATA2002/2902. It may not be considered as random selected because the survey was not delivered to students randomly but students did it at ther discretion. Biased may be caused due to this design as discussed below. 
 
 
-```{r cars}
-summary(cars)
+>Potential Biases
+
+There are 325 students enrolled in DATA2002/2902 in the second semester 2018. The response rate is not that high, hence the margin of error can be quite high. In this case, we tend to think the sample is not randomly chosen from the whole population. There will be need for a certain degreee of respondant rate. In our case, only 110 students respond and it is not enough to decide it is representative for a population of size 325. Representiveness and response rate are related. The larger the population size is, the lower response rate is required (Diego Graglia, 2019).
+
+The data was collected through on-line survey on ed platform,it is likely to cause Non-response bias to sample results. Students who answered the survey are possibly those took DATA2002/2902 more seriously, joining campus life more actively and  spend more time on study platform (ed). That might affect results to survey questions like: number of being member of school clubs, study time per week, time on social media platform and so on. Considering this issue, the sample can not be viewed as random or representative for the whole population. 
+
+Aside from collection bias, some survey questions are likely to cause measurement bias. For example: when people answering to the question: "how often do you floss your teeth(floss_frequency)" and "average hour spend on school work last semester(study)", they may fail to answer accurately and truthfully due to memory. This can result in inaccurate conclusion. Other vaiable like "the last time to see dentist(dentist)" might also have measurement biases.  
+
+##First-step Data Cleaning 
+
+The codes are from Lab 2A and lec_10_ini.rmd.
+```{r,echo=TRUE,message = FALSE,warning = FALSE, results='hide'}
+library(tidyverse)
+library(janitor)
+library(naniar)
+library(kableExtra)
+library('DT')
+library(knitr)
+library(ggpubr)
+
+survey <- read_csv("DATA2X02 class survey (Responses) - Form responses 1.csv")
+#Rename the columns
+old_names = colnames(survey)
+survey = survey %>% 
+  janitor::clean_names() %>% 
+  rename(postcode = postcode_of_where_you_live_during_semester,
+         units = what_statistics_courses_have_you_taken,
+         clubs = how_many_university_clubs_are_you_a_member_of,
+         dentist = how_long_has_it_been_since_you_last_went_to_the_dentist,
+         study = on_average_how_many_hours_per_week_did_you_spend_on_university_work_last_semester,
+         social_media = what_is_your_favourite_social_media_platform,
+         siblings = how_many_siblings_do_you_have,
+         exercise = how_many_hours_a_week_do_you_spend_exercising,
+         pet_growing_up = did_you_have_a_pet_growing_up ,
+         live_with_parents = do_you_currently_live_with_your_parents,
+         eye_colour = what_is_your_eye_colour,
+         hrs_employed = how_many_hours_per_week_do_you_work_in_paid_employment,
+         fav_season = what_is_your_favourite_season_of_the_year,
+         shoe_size = what_is_your_shoe_size,
+         height = how_tall_are_you,
+         floss_frequency = how_often_do_you_floss_your_teeth,
+         glasses = do_you_wear_glasses_or_contacts,
+         handedness = what_is_your_dominant_hand,
+         doneness = how_do_you_like_your_steak_cooked)
+new_names = colnames(survey)
+
+
+#Recode eyecolours
+survey = survey %>% mutate(eye_colour = stringr::str_to_title(eye_colour), 
+    eye_colour = case_when(eye_colour == "Balack" ~ "Black", eye_colour == 
+        "Hazelnut" ~ "Hazel", TRUE ~ eye_colour))
+survey = survey %>% 
+  mutate(
+    eye_colour = forcats::fct_lump_min(eye_colour, min = 2)
+  )
+survey %>% janitor::tabyl(eye_colour) %>% adorn_pct_formatting() %>% kable()
+
+#Recode social media
+survey %>% 
+  mutate(
+    social_media = stringr::str_to_title(social_media),
+    social_media = recode(social_media,
+                          `Facebook Messenger` = "Facebook",
+                          Fb = "Facebook",
+                          `I Never Use Social Media.` = "None",
+                          Ig = "Instagram"),
+    social_media = forcats::fct_lump(social_media, n=7)
+  ) %>%
+  janitor::tabyl(social_media) %>% adorn_pct_formatting() %>% kable()
+#Recode gender
+survey = survey %>% mutate(recoded_gender = gendercodeR::recode_gender(gender))
+survey %>% tabyl(recoded_gender) %>% kable()
+
+#Recode height
+survey = survey %>% 
+  mutate(
+    height = case_when(
+      height > 230 ~ NA_real_,
+      height < 1.1 ~ NA_real_,
+      height < 2.30 ~ height*100,
+      TRUE ~ height
+    )
+  )
+survey %>% tabyl(height) %>% kable()
+
+
+#Recode exercise
+
+survey = survey %>% 
+  mutate(
+    exercise = as.numeric(exercise),
+    exercise = case_when(
+      exercise > 24*7 ~ NA_real_,
+      TRUE ~ exercise
+    )
+  )
+survey %>% tabyl(exercise) %>% kable()
+
+glimpse(survey)
+
 ```
 
-## Including Plots
+***
+#Analysis
+***
 
-You can also embed plots, for example:
+We begin analysis of the data in certain questions below.
+The significance level we use in tests throught all this section in this report would be $$\alpha = 0.05$$.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+##Exercises and Diet
+
+In this analysis, we will focus on the difference of time spending on exericises between students who eat red meat or not. In order to do this, we need to modify the data a little bit. Some summeries are as follows.
+
+
+```{r,warning = FALSE}
+#Classify students who eat red meat or not
+survey = survey%>%
+  mutate(
+    eat_red_meat = as.factor(doneness),
+    eat_red_meat = forcats::fct_collapse(eat_red_meat,
+                                           No = c("I don't eat red meat"),
+                                           Yes = c("Medium", "Medium-rare", "Medium-well done",'Rare','Well done')),
+    eat_red_meat = as.vector(eat_red_meat)
+  )
+
+#Working on dataframe
+redexercise =survey%>%
+  select(exercise,eat_red_meat)%>%
+  filter(eat_red_meat == 'Yes'|eat_red_meat == 'No')
+
+summ1 = redexercise%>%
+  group_by(eat_red_meat)%>%
+  drop_na()%>%
+  summarise(
+    Mean = mean(exercise),
+            SD = sd(exercise), 
+            n = n())
+summ1%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+>Data Visualisation:
+
+Visualising the data makes the features and summaries of data more easier to identify. Here we do the $gglpot()$ and $boxplot()$. The main purpose of doing this  is to check if the $\textbf{Normality Assumption}$ of parametric tests or $\textbf{Symmetric Assumption}$ of non-parametric tests is satisfied.
+
+```{r, warning  = FALSE}
+library("ggplot2")
+ggplot(redexercise, aes(x = eat_red_meat, y = exercise)) + 
+  geom_boxplot() + 
+  geom_jitter(width=0.15, size = 1, colour = "blue") + 
+  theme_bw(base_size = 14) + 
+  labs(x = "Eat red meat or not", y = "Exercise time per week")
+c1 = redexercise%>%
+  drop_na()%>%
+  filter(eat_red_meat == 'Yes')%>%
+  select(exercise)%>%
+  pull(exercise)
+ 
+c2 = redexercise%>%
+  drop_na()%>%
+  filter(eat_red_meat == 'No')%>%
+  pull(exercise)
+
+ggqqplot(c1,main = "Normal Q-Q Plot of Eating Red Meat")
+ggqqplot(c2,main = "Normal Q-Q Plot of Not Eating Red Meat")
+
+
+#Shapiro.test for Testing Normality
+y_m = c(shapiro.test(c1)$p.value,shapiro.test(c2)$p.value)
+x_m = c("Eat red meat", "Do not eat red meat")
+y_m.mat = matrix(y_m,1,2)
+colnames(y_m.mat) = x_m
+rownames(y_m.mat) = "p-value"
+y_m.mat%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+
+```
+According to the boxplot, we can see the shapes of two plots are similar but the means are different. They does not seem symmetric as well. 
+
+According to the qqplot for checking normality, we can see in both graphs there is a departure at ends of the line. The points look disperse, especially when sample size is small.
+
+According to the results of shapiro.tests, the p-values of sample of eating red meat is extremely small and rounded to 0, indicating no evidence of normality. The grey area shows the 95% Confidence Interval of values along the regression line @. 
+
+We may not assume the samples are from normal distribution, but it is comfortable to recognize that they are from the distribution differed by a shift. 
+
+
+
+> Wilcoxon Rank-sum Test
+
+**Hypothesis:**
+
+$$H_0 = \text{ The difference of the time spending on exericises per week between students who eat red meat or not is 0 } (\mu_{X}=\mu_{Y})$$
+$$H_1 = \text{ The difference of the time spending on exericises per week between students who eat red meat or not is not 0 } (\mu_{X}\neq\mu_{Y})$$ 
+**Assumptions and Check of Eligibility:**
+
+
+$$\text{The two groups of data (X,Y) are independent and follow the same distribution but differ by a shift.}$$
+
+
+Here we apply wilcoxon rank sum test. We don't choose welch two-sample t-test because the distibution of red meat sample doesn't follow normal distribution after checking normality by shapiro.test. We can also see from boxplot and qqplot of data the distributions of two groups seem not symmetric or normal, but only look similar in shape, which would be indications for a similar distribution with shifts. The sample size between group not eating red meat and eating red meat has a great discrepancy. In addition, the sample size of group not eating red meat is only 7, which is quite small and is not eligible to apply Central Limit Theorem to consider it as a normal distribution. 
+
+**Test Statistics and p-value:**
+
+Calculating manually using formula:
+
+The test statistics turns out to be 304.5, and p-value is 0.5740.
+```{r, warning = FALSE}
+datE = data.frame(
+  exercise = c(c1,c2),
+  Eat_red_meat = c(rep("Yes", length(c1)),
+             rep("No", length(c2)))
+)
+datE = datE %>% mutate(r = rank(exercise))
+sum_dat = datE %>%
+  group_by(Eat_red_meat) %>% 
+  summarise(n = n(),
+            w = sum(r)
+  )
+n_A = sum_dat$n[sum_dat$Eat_red_meat == "Yes"]
+n_B = sum_dat$n[sum_dat$Eat_red_meat == "No"]
+w_A = sum_dat$w[sum_dat$Eat_red_meat == "Yes"]
+# using the sums of the A sample
+ew_A = n_A * (n_A + n_B + 1)/2 
+minw_A = n_A * (n_A + 1)/2
+#c(minw_A, w_A, ew_A) # w_A < ew_A
+# looking in the lower tail
+
+c(w_A - minw_A, 2*pwilcox(w_A - minw_A, n_A, n_B))
+```
+
+Using embedded function $wilcox.test()$:
+
+The test statistics turns out to be 304.5, and p-value is 0.5681.
+```{r}
+wilcox.test(c1, c2)
+```
+
+**Conclusion:**
+
+In both methods the test statistics are the same and the p-values are very similar. The p-value is around 0.57 and is quite large indicating no evidence against $H_0$. Hence, we do not reject $H_0$ and there is no difference of the time spending on exericises per week between students who eat red meat or not.
+
+##Exercise and  Clubs
+
+In this part of study we are try to analysing if there is any evidence that the weekly exercise time of students who participate in more than 3 univeristy clubs is different to those who don¡¯t. Some summeries are as follows. 
+
+```{r}
+clubex=survey%>%
+  select(exercise,clubs)
+clubex = clubex%>% 
+  drop_na()%>%
+  group_by (clubs >3)
+summ2 = clubex%>%
+  summarise(
+    Mean = mean(exercise),
+            SD = sd(exercise), 
+            n = n())%>%
+  rename (Number_of_clubs = `clubs > 3`)%>%
+  mutate(
+    Number_of_clubs = as.character(Number_of_clubs),
+    Number_of_clubs = recode(Number_of_clubs, 
+    `TRUE` = 'More than 3',
+    `FALSE` = 'Less or equal than 3')
+  )
+ 
+   
+
+summ2%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+```
+
+>Data Visualisation
+
+```{r}
+ggplot(clubex, aes(x = `clubs > 3`, y = exercise)) + 
+  geom_boxplot() + 
+  geom_jitter(width=0.15, size = 1, colour = "blue") + 
+  theme_bw(base_size = 14) + 
+  scale_x_discrete(breaks=c("TRUE","FALSE"),
+        labels=c("More than 3", "Less or equal than 3"))+
+  labs(x = "Joining more than 3 clubs or not", y = "Exercise time per week")
+c1 = clubex%>%
+  drop_na()%>%
+  filter(clubs > 3)%>%
+  ungroup() %>%
+  select(exercise)%>%
+  pull(exercise)
+
+ 
+c2 = clubex%>%
+  drop_na()%>%
+  filter(clubs <= 3)%>%
+  ungroup() %>%
+  pull(exercise)
+ggqqplot(c1,main = "Normal Q-Q Plot of More than 3")
+ggqqplot(c2,main = "Normal Q-Q Plot of Less than 4")
+
+
+#Shapiro.test for Testing Normality
+y_m = c(shapiro.test(c1)$p.value,shapiro.test(c2)$p.value)
+x_m = c("More than 3 clubs", "Less or equal than 3 clubs")
+y_m.mat = matrix(y_m,1,2)
+colnames(y_m.mat) = x_m
+rownames(y_m.mat) = "p-value"
+y_m.mat%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+
+
+```
+
+According to the boxplot, we can see the shapes of two plots are quite different. They does not seem symmetric as well. The variances of two samples also differ a lot. 
+
+According to the qqplot for checking normality, we can see in the graphs there is a departure at ends of the line. The points look disperse, especially when sample size is large.
+
+According to the results of shapiro.tests, the p-values of sample of less-than-3-club is extremely small and rounded to 0, indicating no evidence of normality. 
+
+We may not assume the samples are from normal distribution and also from a symmetric distribution. In this case, we shall use wilcoxon rank-sum test as it is quite robust.
+
+> Wilcoxon Rank-sum test
+
+**Hypothesis:**
+
+$$H_0 = \text{ There is no difference of time spending on exericises per week between students who enter more than 3 clubs at school or not }(\mu_{X} =\mu_{Y}) $$
+$$H_1 = \text{ There is no difference of time spending on exericises per week between students who enter more than 3 clubs at school or not }(\mu_{X} \neq \mu_{Y})$$ 
+
+**Assumptions and Check of Eligibility:**
+
+$$Assumption: \text{The two groups of data (X,Y) are independent and follow the same distribution but differ by a shift.}$$
+In this case, we apply wilcox rank sum test due to its robustness. We don't choose welch two-sample t-test because the assumptions of two sample t-test do not meet. The distibution of less-or-equal-than-3 sample group doesn't follow normal distribution after checking normality by shapiro.test and investigating the boxplot and qqplot. The distributions of two groups seem not symmetric at all. Additionally, the sample size between groups of less-than-or-equal-to-3-clubs and more-than-3-clubs has a huge discrepancy.The sample size of group more-than-3-clubs is only 10, which is quite small and is not eligible to apply Central Limit Theorem to consider it as a normal distribution. In addition, though the sample size of group of less-than-or-equal-to-3-clubs is large, it seems its distribution is  nomarl and is failed in normality test. 
+
+**Test Statistics and p-value:**
+
+Calculating manually using formula:
+
+The test statistics turns out to be 346.5, and p-value is 0.14.
+
+```{r, echo = TRUE, warning = FALSE, messages = FALSE, error = FALSE}
+datE = data.frame(
+  exercise = c(c1,c2),
+  Number_of_clubs= c(rep("More than 3", length(c1)),
+             rep("Less or equal than 3", length(c2)))
+)
+datE = datE %>% mutate(r = rank(exercise))
+sum_dat = datE %>%
+  group_by(Number_of_clubs) %>% 
+  summarise(n = n(),
+            w = sum(r)
+  )
+n_A = sum_dat$n[sum_dat$Number_of_clubs == "More than 3"]
+n_B = sum_dat$n[sum_dat$Number_of_clubs == "Less or equal than 3"]
+w_A = sum_dat$w[sum_dat$Number_of_clubs == "More than 3"]
+# using the sums of the A sample
+ew_A = n_A * (n_A + n_B + 1)/2 
+minw_A = n_A * (n_A + 1)/2
+#c(minw_A, w_A, ew_A) # w_A < ew_A
+# looking in the lower tail
+c(w_A - minw_A, 2*pwilcox(w_A - minw_A, n_A, n_B))
+```
+
+Using embedded function $wilcox.test()$:
+
+The test statistics turns out to be 346.5, and p-value is 0.137.
+```{r}
+wilcox.test(c1, c2)
+```
+
+**Conclusion:**
+
+In both methods the test statistics are the same and the p-values are very similar. The p-value is around 0.14 and it islarger than 0.05 indicating no evidence against $H_0$ at 5% siginificance level. Hence, we do not reject $H_0$ and there is no difference of the time spending on exericises per week between students join more than 3 clubs or not.
+
+##Study Time and Living with Parents
+
+We would like to know if there is any evidence that students who live with their parents study more hours per week than students who do not live with. Summaries are as follows.
+```{r}
+studypa =survey%>%
+  select(study,live_with_parents)%>%
+  filter(live_with_parents == 'Yes'|live_with_parents == 'No')%>%
+  filter(study<98) # suppose a student sleep at least for 8 hours a day in one week and spend at least 2 hours eating and relaxing...So we get rid of some irregular data...orz 
+
+
+summ3 = studypa%>%
+  drop_na()%>%
+  group_by (live_with_parents)%>%
+  summarise(
+    Mean = mean(study),
+            SD = sd(study), 
+            n = n())
+summ3%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+```
+
+> Data Visualisation
+
+```{r}
+ggplot(studypa, aes(x = live_with_parents, y = study)) + 
+  geom_boxplot() + 
+  geom_jitter(width=0.15, size = 1, colour = "blue") + 
+  theme_bw(base_size = 14) + 
+  labs(x = "Live with parents or not", y = "Study time per week")
+
+c1 = studypa%>%
+  drop_na()%>%
+  filter(live_with_parents == 'Yes')%>%
+  select(study)%>%
+  pull(study)
+ 
+c2 = studypa%>%
+  drop_na()%>%
+  filter(live_with_parents == 'No')%>%
+  pull(study)
+ggqqplot(c1,main = "Normal Q-Q Plot of with parent")
+ggqqplot(c2,main = "Normal Q-Q Plot of without parent")
+#Shapiro.test for Testing Normality
+y_m = c(shapiro.test(c1)$p.value,shapiro.test(c2)$p.value)
+x_m = c("More than 3 clubs", "Less or equal than 3 clubs")
+y_m.mat = matrix(y_m,1,2)
+colnames(y_m.mat) = x_m
+rownames(y_m.mat) = "p-value"
+y_m.mat%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+
+
+```
+
+According to the boxplot, we can see the shapes of two plots are a little bit different. They seem symmetric but not that much. The points are spreaded randomly in the boxplots and it is still OK for us to say they meet the symmetric assumption. We may not assume they are of homogeneity.
+
+According to the qqplot for checking normality, we can see in the graphs that the points are mostly lying in the 95% confidence interval. The points stay close to the line, indicating fitness of normal line.
+
+According to the results of shapiro.tests, the p-values of two samples are both larger than 0.05, indicating evidence of normality. We may conclude they are normally distributed.
+
+We can assume the samples are from normal distribution. In this case, we can performa two-sample t test.
+
+> Two Sample t-test
+
+**Hypothesis:**
+
+$$H_0 = \text{ There is no difference of study hours per week between students who live with their parents with who don¡¯t live with }(\mu_{X} =\mu_{Y}) $$
+$$H_1 = \text{ students who live with their parents study more hours per week than students who don¡¯t live with}(\mu_{X} > \mu_{Y})$$ 
+
+**Assumptions and Check of Eligibility:**
+
+$$Assumption: \text{The two groups of data (X,Y) are independent and follow normal distribution.}$$
+In this case, we apply two sample t-test. According to normality check by shapiro.test and investigation of the boxplot and qqplot. The distributions of two groups seem symmetric and normal. Additionally, the sample size between groups is similar and >30, which is suitably large for a normal assumption by CLT. 
+
+**Test Statistics and p-value:**
+
+Calculating manually using formula:
+
+The test statistics turns out to be -0.11, and p-value is 0.5440.
+```{r}
+nY = as.numeric(summ3[2,4])
+nN = as.numeric(summ3[1,4])
+sY = as.numeric(summ3[2,3])
+sN = as.numeric(summ3[1,3])
+sP = sqrt(((nY - 1) * sY^2 + (nN - 1) * sN^2)/
+            (nY + nN - 2))
+mY = as.numeric(summ3[2,2])
+mN = as.numeric(summ3[1,2])
+deg_free = nY+nN-2
+
+t0 = (mY - mN)/(sP * sqrt(1/nY + 1/nN))
+p_val = pt(abs(t0), deg_free)
+c(t0, p_val)
+```
+Using embedded function $t.test()$:
+
+The test statistics turns out to be -0.11, and p-value is 0.544.
+```{r}
+t.test(c1,c2, alternative = "greater", var.equal = TRUE)
+```
+
+**Conclusion:**
+
+In both methods the test statistics are the same and the p-values are very similar. The p-value is around 0.54 and it is quite large indicating no evidence against $H_0$ at 5% siginificance level. Hence, we do not reject $H_0$ and there is no difference of the time spending on study per week between students who live with parents or not.
+
+##Additional Question 1: Does Siblings matter?
+
+Does having or not having siblings affect study, social activity(clubs), exercise, work(balance life and work) of students? Being the only child in family or not is a heated topic in China. Most students in China is the only child in their family due to policy restriction. We want to discorver if there is some difference between student lifes of who are the only child in their family or not. In this case, we apply two sample multivariate test of means. Since we are compraing multiple means of groups of twp samples, it is suitable to use a multivariate test.
+
+**Hypothesis:**
+
+$$H_0 = \text{ There is no difference of  study, social activity(clubs), exercise, work(balance life and work) between students has siblings or not }(\mu_{\textbf{X}} =\mu_{\textbf{Y}}) $$
+$$H_1 = \text{ There is difference of  study, social activity(clubs), exercise, work(balance life and work) between students has siblings or not }(\mu_{\textbf{X}} \neq \mu_{\textbf{Y}})$$ 
+
+**Assumptions and Check of Eligibility:**
+
+$$Assumption: \text{The two groups of data } (\textbf{X},\textbf{Y}) \text{ are independent and follow a multivariate normal distribution}$$ 
+$$\text{ where } \textbf{X},\textbf{Y} \text{ are random vectors corresponding to two samples}$$
+We have not learnt how to check assumption of multivatiate normal.  Symmetry? 
+In this case, since the sample size is large, we asumption is satisfied by CLT.
+
+**Test Statistics and p-value:**
+
+Using embedded function $HotellingsT2$:
+
+The test statistic is reported as ,and p-value is 
+```{r}
+data = survey
+##data cleaning 
+data7 = data %>% 
+  filter(siblings >= 0& !(exercise >168) & !(study >168)& !(clubs > 30) & !(hrs_employed > 168)) %>% #168 is the total hour in one week  
+  dplyr::select(siblings,study,clubs,exercise,hrs_employed) %>% 
+  mutate(one_child = (siblings == 0)) %>% group_by(one_child) %>% 
+  dplyr::select(-siblings) %>% as.data.frame()
+dat_one_c = data7 %>% filter(one_child == TRUE) %>% dplyr::select(-one_child)
+dat_s = data7 %>% filter(one_child == FALSE) %>% dplyr::select(-one_child)
+
+ICSNP::HotellingsT2(dat_one_c, dat_s, test = "f")
+### Whether having siblings is  not a big factor that impacts students life,study and work 
+```
+
+##Additional Question 2: Employment time and Study time: Permutation test
+
+We hope to study if there is difference of working time between students working who live with parents or not. We compare the test result with results from permutation test to see if they matches. Summaries are as follows:
+
+```{r}
+workstudy =survey%>%
+  select(hrs_employed ,study)%>%
+  filter(study < 98)%>%
+  filter(study > 40|study< 15)%>%
+  filter(hrs_employed<90 & hrs_employed != 0)# suppose a student sleep at least for 8 hours a day, eat and study for 2.5 hours and only count for non-zero values for hrs_employed
+
+summ4 = workstudy%>%
+  drop_na()%>%
+  group_by (study>40)%>%
+  summarise(
+    Mean = mean(hrs_employed),
+            SD = sd(hrs_employed), 
+            n = n())%>%
+  rename (study_time = `study > 40`)%>%
+  mutate(
+    study_time = as.character(study_time),
+    study_time = recode(study_time, 
+    `TRUE` = 'More than 40',
+    `FALSE` = 'Less than 15')
+  )
+
+summ4%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+```
+> Data Visualisation
+
+```{r}
+ggplot(workstudy, aes(x = study > 40, y = hrs_employed)) + 
+  geom_boxplot() + 
+  geom_jitter(width=0.15, size = 1, colour = "blue") + 
+  theme_bw(base_size = 14) + 
+  scale_x_discrete(breaks=c("TRUE","FALSE"),
+        labels=c("More than 40", "Less than 15"))+
+  labs(x = "study time", y = "Work time per week")
+  
+par(mfrow = c(1,2), cex = 0.8, mar = c(4,4,1.1,0.5))
+
+c1 = workstudy%>%
+  drop_na()%>%
+  filter(study>40)%>%
+  select(hrs_employed)%>%
+  pull(hrs_employed)
+ 
+c2 = workstudy%>%
+  drop_na()%>%
+  filter(study < 15)%>%
+  pull(hrs_employed)
+ggqqplot(c1,main = "Normal Q-Q Plot of more than 40")
+ggqqplot(c2,main = "Normal Q-Q Plot of less than 15")
+
+#Shapiro.test for Testing Normality
+y_m = c(shapiro.test(c1)$p.value,shapiro.test(c2)$p.value)
+x_m = c("More than 40 hours", "Less than 15 hours")
+y_m.mat = matrix(y_m,1,2)
+colnames(y_m.mat) = x_m
+rownames(y_m.mat) = "p-value"
+y_m.mat%>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = TRUE)
+
+```
+
+
+According to the boxplot, we can see the shapes of two plots are different. They seem symmetric but not that much but are from different distributions. The points are spreaded randomly in the boxplots and it is still OK for us to say they meet the symmetric assumption. We may not assume they are of homogeneity.
+
+According to the qqplot for checking normality, we can see in the graph of more-than-40-hours that the points are mostly lying in the 95% confidence interval, while in the other one the points depart at ends of the normal line. We then perform the shapiro.test to test for normality.
+
+According to the results of shapiro.tests, the p-values of two samples are both larger than 0.05, indicating evidence of normality. We may conclude they are normally distributed.
+
+We can assume the samples are from normal distribution. In this case, we can perform a two-sample t test.
+
+>Two Sample t-test 
+
+**Hypothesis:**
+
+$$H_0 = \text{ There is no difference of work hours per week between students who study more than 40 hours per week and less than 15 hours per week }(\mu_{X} =\mu_{Y}) $$
+$$H_1 = \text{ There is difference of work hours per week between students  who study more than 40 hours per week and less than 15 hours per week }(\mu_{X} \neq \mu_{Y})$$ 
+
+**Assumptions and Check of Eligibility:**
+
+$$Assumption: \text{The two groups of data (X,Y) are independent and follow normal distribution.}$$
+
+In this case, we apply two sample t-test. According to normality check by shapiro.test and investigation of the boxplot and qqplot. The distributions of two groups seem symmetric and normal. 
+
+**Test Statistics and p-value:**
+
+Caculating manually using formula:
+
+The test statistic is reported as -0.809, and p-value is 0.431.
+```{r}
+nY = as.numeric(summ4[2,4])
+nN = as.numeric(summ4[1,4])
+sY = as.numeric(summ4[2,3])
+sN = as.numeric(summ4[1,3])
+sP = sqrt(((nY - 1) * sY^2 + (nN - 1) * sN^2)/(nY + nN - 2))
+mY = as.numeric(summ4[2,2])
+mN = as.numeric(summ4[1,2])
+deg_free = nY+nN-2
+
+t0 = (mY - mN)/(sP * sqrt(1/nY + 1/nN))
+p_val = 2*(1-pt(abs(t0), deg_free))
+c(t0, p_val)
+```
+
+Using embedded function $t.test()$:
+
+The test statistic is reported as -0.809, and p-value is 0.4312.
+```{r}
+t.test(c1,c2, var.equal = TRUE)
+tt = t.test(c1,c2, var.equal = TRUE)
+```
+
+**Conclusion:**
+
+The test statistics is -0.80898 and the p-value is around 0.4312, which is quite large indicating no evidence against $H_0$ at 5% siginificance level. Hence, we do not reject $H_0$ and there is no difference of the time spending on work per week between students who live with parents or not.
+
+>Permutation Test
+
+Permutation test is quite robust. It relaxes lots of assumptions and only assume the variables are exchangeable. It is quite suitbble for conditions when the sample size is small. We would like to know if its 
+results is consistent with the ones from two_sample t.test.
+
+
+**Hypothesis:**
+
+$$H_0 = \text{ There is no difference of work hours per week between students who study more than 40 hours per week and less than 15 hours per week }(\mu_{X} =\mu_{Y}) $$
+$$H_1 = \text{ There is difference of work hours per week between students who  who study more than 40 hours per week and less than 15 hours per week }(\mu_{X} \neq \mu_{Y})$$ 
+
+**Assumptions and Check of Eligibility:**
+
+$$Assumption: \text{The two groups of data (X,Y) are exchangable under null hypothesis.}$$
+
+Since permutation tests are quite robust, it is suitablr that we assume under the null hypothesis, the two group of random variables are exchangeable. 
+
+```{r}
+dat = workstudy%>%
+  drop_na()%>%
+  group_by (study > 40)%>% filter(`study > 40` %in% c("TRUE", "FALSE"))
+set.seed(2333)
+B = 10000 # number of permuted samples we will consider
+permuted_dat = dat # make a copy of the data
+t_null = vector("numeric", B) # initialise outside loop
+for(i in 1:B) {
+  permuted_dat$`study > 40` = sample(dat$`study > 40`) # this does the permutation
+  t_null[i] = t.test(hrs_employed ~ `study > 40`, data = permuted_dat)$statistic
+}
+data.frame(t_null) %>% 
+  ggplot(aes(x = t_null)) + 
+  geom_histogram(binwidth = 0.1) + 
+  theme_linedraw(base_size = 14)+
+  theme_gray()
+data.frame(abs_t_null = abs(t_null)) %>% 
+  ggplot(aes(x = abs_t_null)) + 
+  geom_histogram(binwidth = 0.1,
+                 boundary = 0) +
+  labs(x = 'Abosolute t_null')+
+  theme_linedraw(base_size = 14) + 
+  geom_vline(xintercept = abs(tt$statistic), 
+             col = "red", lwd = 2) +
+  theme_gray()
+  
+mean(abs(t_null) >= abs(tt$statistic))
+```
+
+**Test Statistics and p-value:**
+
+Simulating by permutaion:
+
+The test statistic is not reported, and p-value is 0.4527.
+
+**Conclusion:**
+
+In both tests the p-values are very similar. The p-value is 0.4527 close to 0. 4312 and it is quite large indicating no evidence against $H_0$ at 5% siginificance level. Hence, we do not reject $H_0$ and there is no difference of the time spending on work per week between students who work for more than 40 hours and less than 15 hours.
+
+##Conclusion
+
+##References
+
+respondants needed
+
+https://www.surveymonkey.com/curiosity/how-many-people-do-i-need-to-take-my-survey/
